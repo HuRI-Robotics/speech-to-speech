@@ -3,7 +3,7 @@ from parler_tts import ParlerTTSForConditionalGeneration
 from transformers import AutoTokenizer
 
 def get_tts_model():
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     return ParlerTTSForConditionalGeneration.from_pretrained("parler-tts/parler-tts-mini-v1").to(device)
 
 def get_tts_tokenizer():
