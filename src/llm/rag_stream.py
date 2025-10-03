@@ -10,6 +10,7 @@ class LLM:
         self.model = model
 
     def now_iso(self):
+        """Get time from machine"""
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def ensure_mem_files(self):
@@ -20,7 +21,7 @@ class LLM:
             MEM_JSONL.touch()
 
     def log_message(self, role, content):
-        """Append the message to discussion.txt and memory.jsonl."""
+        """Append the message to docs/discussion.txt and docs/memory.jsonl."""
         self.ensure_mem_files()
         ts = self.now_iso()
         with open(MEM_TXT, "a", encoding="utf-8") as f:
@@ -47,6 +48,7 @@ class LLM:
         return msgs
 
     def embed_one(self, text):
+        """Get the embeddings"""
         r = requests.post(f"{OLLAMA_URL}/api/embeddings",
                         json={"model": EMBED_MODEL, "input": text})
         r.raise_for_status()
@@ -55,15 +57,18 @@ class LLM:
         return v
 
     def top_k(self, query_vec, mat, k=TOP_K):
+        """Transfrom a text into a vector table"""
         scores = mat @ query_vec  # cosine via normalized dot
         idx = np.argsort(-scores)[:k]
         return idx, scores[idx]
 
     def load_index(self, path=INDEX_PATH):
+        """Load vectore, texts and metadata from the rag"""
         data = np.load(path, allow_pickle=True)
         return data["vectors"], data["texts"], data["meta"]
 
     def build_user_prompt(self, question, contexts):
+        """Ensence the user prompt with more data"""
         ctx_block = "\n\n---\n\n".join(contexts) if contexts else "(no retrieved context)"
         user = (
             f"Context:\n{ctx_block}\n\n"
@@ -74,11 +79,12 @@ class LLM:
 
 
     def get_rag_contexts(self, question):
+        """Get the information from the rag"""
         contexts = []
         try:
-            V, texts, meta = self.load_index(INDEX_PATH)
+            V, texts, meta = self.load_index(INDEX_PATH) # For now no need of the metadata, maybe later
             qv = self.embed_one(question)
-            idxs, scores = self.top_k(qv, V, k=TOP_K)
+            idxs, scores = self.top_k(qv, V, k=TOP_K) # For now no need of the scores, maybe later
             contexts = [texts[i] for i in idxs]
         except FileNotFoundError:
             contexts = []
@@ -87,9 +93,10 @@ class LLM:
         return contexts
 
     def memory(self, contexts, question, no_history=False):
+        """Load the context, the history and rework the prompt"""
         system_prompt = (
-            "You are a helpful assistant. Prefer the provided context when available. "
-            "If the answer isn't in the context, say you don't know."
+            "Based on your context try to always give the best answer, and if you are searching something try to get it at any cost"
+            "All answer has to be in a model like an answer from a conversation"
         )
         messages = [{"role": "system", "content": system_prompt}]
 
@@ -102,7 +109,7 @@ class LLM:
 
     def stream_chat(self, messages, think=True):
         """Call Ollama with streaming, return the full assistant text while printing tokens live."""
-        payload = {"model": CHAT_MODEL, "stream": True, "messages": messages, "think": think}
+        payload = {"model": CHAT_MODEL, "stream": True, "messages": messages}
         assistant_text = []
         with requests.post(f"{OLLAMA_URL}/api/chat", json=payload, stream=True) as r:
             r.raise_for_status()
@@ -120,6 +127,7 @@ class LLM:
         return "".join(assistant_text)
 
     def chat_loop_written(self, no_history=False, think=True):
+        """Create a chat bot"""
         while True:
             question = input("You (exit or quit to quit): ")
             if question.lower() in ("exit", "quit"):
@@ -133,9 +141,11 @@ class LLM:
             self.log_message("assistant", assistant_reply)
 
 def main():
-    if len(sys.argv) == 3 and (sys.argv[2] == "-h" or sys.argv[2] == "--help"):
-        print('Usage: python rag_stream.py [--no-history]')
-        print('       ["your question here"]')
+    if len(sys.argv) == 2 and (sys.argv[1] == "-h" or sys.argv[1] == "--help"):
+        print('Usage:   python rag_stream.py [--no-history]')
+        print('             loop')
+        print('                 ["your prompt"')
+        print('                 "Answer from the assistant"]')
         return
 
     args = sys.argv[0:]
@@ -145,7 +155,7 @@ def main():
         args.remove("--no-history")
 
     llm = LLM(model=CHAT_MODEL)
-    llm.chat_loop_written(no_history=no_history)
+    llm.chat_loop_written(no_history=no_history , think=true)
 
 
 if __name__ == "__main__":
