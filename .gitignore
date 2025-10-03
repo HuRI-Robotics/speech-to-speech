@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+chroma_db
+index.npz
+docs/discussion
+
 test_audio/
 venv*
 
